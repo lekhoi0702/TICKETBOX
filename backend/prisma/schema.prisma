@@ -1,0 +1,189 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum Role {
+  BUYER
+  ORGANIZER
+  ADMIN
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  MOMO
+  BANK_TRANSFER
+  CASH_ON_DELIVERY
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String?  @unique
+  phone     String?  @unique
+  name      String?
+  password  String
+  role      Role     @default(BUYER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+  events Event[] @relation("OrganizerEvents")
+}
+
+model Event {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  date        DateTime
+  time        String?
+  organizerId Int
+  venueId     Int?
+  categoryId  Int?
+  imageUrl    String?
+  status      String? // e.g., "draft", "published", "ended"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  organizer   User         @relation("OrganizerEvents", fields: [organizerId], references: [id])
+  venue       Venue?       @relation(fields: [venueId], references: [id])
+  category    Category?    @relation(fields: [categoryId], references: [id])
+  ticketTypes TicketType[]
+  promoCodes  PromoCode[]
+  isSeated    Boolean      @default(false)
+}
+
+model Venue {
+  id       Int     @id @default(autoincrement())
+  name     String
+  address  String
+  city     String
+  country  String? @default("Vietnam")
+  capacity Int?
+
+  events   Event[]
+  sections Section[]
+}
+
+model Category {
+  id   Int    @id @default(autoincrement())
+  name String @unique // e.g., "Music", "Sports", "Theater"
+
+  events Event[]
+}
+
+model TicketType {
+  id                Int     @id @default(autoincrement())
+  eventId           Int
+  name              String // e.g., "VIP", "Standard"
+  price             Float
+  quantityAvailable Int
+  quantitySold      Int     @default(0)
+  description       String?
+
+  event      Event       @relation(fields: [eventId], references: [id])
+  orderItems OrderItem[]
+  seats      Seat[]
+}
+
+model Order {
+  id          Int         @id @default(autoincrement())
+  userId      Int
+  totalAmount Float
+  status      OrderStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id])
+  orderItems OrderItem[]
+  payment    Payment?
+}
+
+model OrderItem {
+  id           Int        @id @default(autoincrement())
+  orderId      Int
+  ticketTypeId Int
+  quantity     Int
+  price        Float // Snapshot of price at purchase
+  seatId       Int?       @unique
+  order        Order      @relation(fields: [orderId], references: [id])
+  ticketType   TicketType @relation(fields: [ticketTypeId], references: [id])
+  seat         Seat?      @relation(fields: [seatId], references: [id])
+}
+
+model Payment {
+  id            Int           @id @default(autoincrement())
+  orderId       Int           @unique
+  method        PaymentMethod
+  amount        Float
+  status        PaymentStatus @default(PENDING)
+  transactionId String?
+  paidAt        DateTime?
+
+  order Order @relation(fields: [orderId], references: [id])
+}
+
+model PromoCode {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique
+  discount  Float // e.g., 0.1 for 10% off
+  eventId   Int?
+  maxUses   Int?
+  uses      Int       @default(0)
+  validFrom DateTime?
+  validTo   DateTime?
+
+  event Event? @relation(fields: [eventId], references: [id])
+}
+
+enum SeatStatus {
+  AVAILABLE
+  BOOKED
+  HOLD
+  DISABLED
+}
+
+model Section {
+  id       Int    @id @default(autoincrement())
+  name     String // e.g., "Floor A", "Balcony"
+  venueId  Int
+  capacity Int?
+
+  venue Venue  @relation(fields: [venueId], references: [id])
+  seats Seat[]
+}
+
+model Seat {
+  id           Int        @id @default(autoincrement())
+  sectionId    Int
+  row          String // e.g., "A", "10"
+  seatNumber   String // e.g., "1", "101"
+  status       SeatStatus @default(AVAILABLE)
+  ticketTypeId Int? // Optional link to TicketType for pricing tiers
+
+  section    Section     @relation(fields: [sectionId], references: [id])
+  ticketType TicketType? @relation(fields: [ticketTypeId], references: [id])
+  orderItem  OrderItem? // One-to-one if assigned
+}
